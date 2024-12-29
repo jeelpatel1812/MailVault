@@ -114,4 +114,25 @@ const refreshAcessToken = AsyncHandler(async(req, res)=>{
 
 })
 
-export {registerController, loginController, refreshAcessToken};
+const logoutController = AsyncHandler(async(req, res)=>{
+    const user = req.user;
+    User.findByIdAndUpdate(user?._id,
+        {
+            $set:{
+                refreshToken: undefined
+            }
+        },
+        {new: true}
+    )
+    const options={
+        http: true,
+        secure: true
+    }
+    return res
+    .status(200)
+    .clearCookie('accessToken', options)
+    .clearCookie('refreshToken', options)
+    .json(new ApiResponse(200, {}, "User logged out successfully."))
+})
+
+export {registerController, loginController, refreshAcessToken, logoutController};
