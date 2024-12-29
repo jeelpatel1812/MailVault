@@ -20,7 +20,7 @@ const registerController = AsyncHandler(async(req, res)=>{
     const createdUser = await User.findById(user._id).select("-password -refreshToken");
     if(!createdUser) throw new ApiError(500, "Something went wrong.");
 
-    return res.json(new ApiResponse(200, createdUser, "User is created succesfully."))
+    return res.json(new ApiResponse(201, createdUser, "User is created succesfully."))
 
 });
 

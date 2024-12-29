@@ -17,6 +17,8 @@ app.use(express.static("public"));
 
 // routes
 import userRoute from './routes/user.route.js';
+import mailRoute from './routes/mail.route.js';
 app.use("/api/v1/user", userRoute);
+app.use("/api/v1/mail", mailRoute);
 
 export {app}
