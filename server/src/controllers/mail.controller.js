@@ -2,7 +2,7 @@ import { Mail } from '../models/mail.model.js';
 import { MailRecipients } from '../models/mail_recipients.model.js';
 import { User } from '../models/users.model.js';
 import ApiResponse from '../utils/apiResponse.js';
-import AsyncHandler from '../utils/asyncHandler.js'
+import AsyncHandler from '../utils/asyncHandler.js';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
@@ -37,4 +37,64 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     return res.json(new ApiResponse(201, {mailData: createdMail, recipientsData: recipientsData}, "Mail has been composed succesfully."))
 });
 
-export {mailComposer};
+const getAllMails = AsyncHandler(async(req, res)=>{
+    const user = req.user;
+    const pipeline = [
+        {
+          $match:
+            {
+              recipientId: user?._id
+            },
+        },
+        {
+          $lookup:
+            {
+              from: "mails",
+              localField: "mailId",
+              foreignField: "_id",
+              as: "mailDetail",
+            },
+        },
+        {
+          $lookup:
+            {
+              from: "users",
+              localField: "mailDetail.senderId",
+              foreignField: "_id",
+              as: "senderDetail",
+            },
+        },
+        {
+          $project:
+            {
+              mailId: 1,
+              senderMailId: {
+                $arrayElemAt: [
+                  "$senderDetail.email",
+                  0,
+                ],
+              },
+              subject: {
+                $arrayElemAt: [
+                  "$mailDetail.subject",
+                  0,
+                ],
+              },
+              content: {
+                $arrayElemAt: [
+                  "$mailDetail.content",
+                  0,
+                ],
+              },
+              receivedAt: 1,
+              isUnread: 1,
+            },
+        },
+    ]
+    const getAllMails = await MailRecipients.aggregate(pipeline);
+
+    return res
+        .send(new ApiResponse(201, {mails: getAllMails}, "Successfully"));
+})
+
+export {mailComposer, getAllMails};
