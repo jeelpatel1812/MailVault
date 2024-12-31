@@ -10,6 +10,8 @@ const mailRecipientsSchema = new Schema({
         ref: 'User' 
     },
     isUnread: Boolean,
+    isTrashed: Boolean,
+    isStarred: Boolean,
     receivedAt: Date
 }, {timestamp: true})
 
