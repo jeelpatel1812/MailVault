@@ -3,6 +3,8 @@ import { MailRecipients } from '../models/mail_recipients.model.js';
 import { User } from '../models/users.model.js';
 import ApiResponse from '../utils/apiResponse.js';
 import AsyncHandler from '../utils/asyncHandler.js';
+import { ScheduledMail } from '../models/scheduled_mail.model.js';
+import cron from "node-cron";
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
@@ -27,6 +29,8 @@ const mailComposer = AsyncHandler(async(req, res)=>{
             mailId: createdMail?._id,
             recipientId:  recipient[0]?._id,
             isUnread: true,
+            isTrashed: false,
+            isStarred: false,
             receivedAt: new Date()
         }
     });
@@ -35,6 +39,26 @@ const mailComposer = AsyncHandler(async(req, res)=>{
 
     if(!recipientsData) throw new ApiError(500, "Something went wrong.");
     return res.json(new ApiResponse(201, {mailData: createdMail, recipientsData: recipientsData}, "Mail has been composed succesfully."))
+});
+
+const scheduledMail = AsyncHandler(async(req, res)=>{
+
+    const user = req.user;
+    if(!user) throw new ApiError(401, 'User not found.');
+    const {content, subject, recipientsEmail, scheduledTime} = req.body;
+
+    const mail = await ScheduledMail.create({
+        senderId: user?._id,
+        subject: subject,
+        content: content,
+        scheduledTime: scheduledTime,
+        recipientsEmail: recipientsEmail
+    });
+
+    const createdMail = await ScheduledMail.findById(mail._id);
+
+    if(!createdMail) throw new ApiError(500, "Something went wrong.");
+    return res.json(new ApiResponse(201, {mailData: createdMail}, "Mail has been scheduled succesfully."))
 });
 
 const getAllMails = AsyncHandler(async(req, res)=>{
@@ -377,4 +401,61 @@ const getUnreadMails = AsyncHandler(async(req, res)=>{
     return res
         .send(new ApiResponse(201, {mails: getAllUnreadMails}, "Successfully"));
 })
-export {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails};
+
+cron.schedule("*/10 * * * * *", AsyncHandler(async(req, res)=>{
+    // get all executable mail
+    const currentTime = new Date().toISOString();
+    const mailsToBeExecuted = await ScheduledMail.find({scheduledTime: { $lt: currentTime }});
+
+    if(mailsToBeExecuted.length==0) return;
+    const allRecipients = mailsToBeExecuted[0]?.recipientsEmail;
+    const dbtime = '2025-01-02T11:55:50.000+00:00';
+    console.log("check mails", mailsToBeExecuted, allRecipients, dbtime , currentTime);
+
+    // iterate all executable mails one by one
+    try{
+      mailsToBeExecuted?.map(async(mail)=>{
+        const mailData = await Mail.create({
+            senderId: mail?.senderId,
+            subject: mail?.subject,
+            content: mail?.content,
+        });
+    
+        const createdMail = await Mail.findById(mailData._id);
+    
+        if(!createdMail) throw new ApiError(500, "Something went wrong.");
+        const docs = allRecipients?.map(async(recipientEmail) => {
+            const recipient = await User.find({email: recipientEmail}).select('-password -refreshToken')
+            console.log("check res", recipient);
+            if(recipient == []) throw new ApiError(401, `${recipientEmail} Receiver not found.`);
+            return {
+                mailId: createdMail?._id,
+                recipientId:  recipient[0]?._id,
+                isUnread: true,
+                receivedAt: new Date()
+            }
+        });
+  
+        // Insert documents
+        const recipientsDocs = await Promise.all(docs || []);
+        const recipientsData = await MailRecipients.insertMany(recipientsDocs);
+    
+        if(!recipientsData) throw new ApiError(500, "Something went wrong.");
+  
+        // Remove it from scheduledmails
+        try {
+          await ScheduledMail.findByIdAndDelete(mail?._id);
+          console.log('Document deleted successfully.');
+        } catch (err) {
+          console.error('Error deleting document:', err);
+        }
+  
+      })
+      if(mailsToBeExecuted.length >0) console.log(` ${mailsToBeExecuted.length} Mail has been executed succesfully.`, mailsToBeExecuted)
+    }
+    catch(err){
+      throw new Error('Operation failed!')
+    }
+    
+}));
+export {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduledMail};
