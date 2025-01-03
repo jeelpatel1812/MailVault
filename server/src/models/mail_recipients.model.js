@@ -7,7 +7,8 @@ const mailRecipientsSchema = new Schema({
     },
     recipientId:{ 
         type: Schema.Types.ObjectId, 
-        ref: 'User' 
+        ref: 'User',
+        required: true
     },
     isUnread: Boolean,
     isTrashed: Boolean,

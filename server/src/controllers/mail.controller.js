@@ -5,6 +5,7 @@ import ApiResponse from '../utils/apiResponse.js';
 import AsyncHandler from '../utils/asyncHandler.js';
 import { ScheduledMail } from '../models/scheduled_mail.model.js';
 import cron from "node-cron";
+import ApiError from '../utils/apiError.js';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
@@ -402,12 +403,15 @@ const getUnreadMails = AsyncHandler(async(req, res)=>{
         .send(new ApiResponse(201, {mails: getAllUnreadMails}, "Successfully"));
 })
 
-cron.schedule("*/10 * * * * *", AsyncHandler(async(req, res)=>{
+cron.schedule("*/30 * * * * *", AsyncHandler(async(req, res)=>{
     // get all executable mail
     const currentTime = new Date().toISOString();
     const mailsToBeExecuted = await ScheduledMail.find({scheduledTime: { $lt: currentTime }});
 
-    if(mailsToBeExecuted.length==0) return;
+    if(mailsToBeExecuted.length==0) {
+      console.log("No schedule mail to execute at this time.");
+      return
+    }
     const allRecipients = mailsToBeExecuted[0]?.recipientsEmail;
     const dbtime = '2025-01-02T11:55:50.000+00:00';
     console.log("check mails", mailsToBeExecuted, allRecipients, dbtime , currentTime);
@@ -458,4 +462,62 @@ cron.schedule("*/10 * * * * *", AsyncHandler(async(req, res)=>{
     }
     
 }));
-export {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduledMail};
+
+
+const getSentMails = AsyncHandler(async(req, res)=>{
+    const user = req.user;
+
+    if(!user) throw new ApiError(401, "User is not found.");
+    const pipeline = [
+      {
+        $match:{
+          senderId: user._id
+        }
+      },
+      {
+        $lookup: {
+          from: "mailrecipients",
+          localField: "_id",
+          foreignField: "mailId",
+          as: "recipientsData",
+          pipeline: [
+             {
+                $lookup: {
+                  from: "users",
+                  localField:"recipientId",
+                  foreignField: "_id",
+                  as: "UserDetail",
+                }
+              },
+            {
+              $project:{
+                _id: 0,
+                mailId:{ $arrayElemAt: [
+                      "$UserDetail.email",
+                      0,
+                  ],
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $project: {
+          subject: 1,
+          content:1,
+          receivers: {
+            $map: {
+              input: "$recipientsData",
+              as: "recipient",
+              in: "$$recipient.mailId"
+            }
+          }
+         
+        }
+      }
+    ]
+    const allSentMails = await Mail.aggregate(pipeline);
+    return res.json(new ApiResponse(200, {sentMails: allSentMails}, "Successfull"))
+})
+export {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduledMail, getSentMails};
