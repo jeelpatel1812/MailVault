@@ -6,17 +6,29 @@ import AsyncHandler from '../utils/asyncHandler.js';
 import { ScheduledMail } from '../models/scheduled_mail.model.js';
 import cron from "node-cron";
 import ApiError from '../utils/apiError.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
     const user = req.user;
     if(!user) throw new ApiError(401, 'User not found.');
-    const {content, subject, recipientsEmail} = req.body;
+    const {content, subject, recipientsEmail, parentId} = req.body;
+    let threadId = uuidv4();
+    let parentsSubject = null;
+    let parentsThread = null;
 
+    //check for reply
+    const parentMail = await Mail.find({_id: parentId});
+    if(parentMail.length){
+        parentsThread = parentMail[0]?.threadId;
+    }
     const mail = await Mail.create({
         senderId: user?._id,
-        subject: subject,
+        subject: parentsSubject || subject,
         content: content,
+        parentId: parentId || null,
+        threadId: parentsThread || threadId,
+        createdAt: new Date()
     });
 
     const createdMail = await Mail.findById(mail._id);
@@ -24,7 +36,6 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     if(!createdMail) throw new ApiError(500, "Something went wrong.");
     const docs = recipientsEmail?.map(async(recipientEmail) => {
         const recipient = await User.find({email: recipientEmail}).select('-password -refreshToken')
-        console.log("check res", recipient);
         if(recipient == []) throw new ApiError(401, `${recipientEmail} Receiver not found.`);
         return {
             mailId: createdMail?._id,
@@ -32,6 +43,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
             isUnread: true,
             isTrashed: false,
             isStarred: false,
+            threadId: parentsThread || threadId,
             receivedAt: new Date()
         }
     });
@@ -65,57 +77,71 @@ const scheduledMail = AsyncHandler(async(req, res)=>{
 const getAllMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
     const pipeline = [
+      [
         {
-          $match:
-            {
-              recipientId: user?._id
-            },
+          $match:{
+            recipientId: user?._id
+          }
         },
         {
-          $lookup:
-            {
-              from: "mails",
-              localField: "mailId",
-              foreignField: "_id",
-              as: "mailDetail",
-            },
+          $sort:{
+            receivedAt: -1
+          }
         },
         {
-          $lookup:
-            {
-              from: "users",
-              localField: "mailDetail.senderId",
-              foreignField: "_id",
-              as: "senderDetail",
-            },
+          $group:{
+            _id: "$threadId",
+            latestMail:  { $first: "$$ROOT"}
+          }
         },
         {
-          $project:
-            {
-              mailId: 1,
-              senderMailId: {
-                $arrayElemAt: [
-                  "$senderDetail.email",
-                  0,
-                ],
+          $replaceRoot: {
+            newRoot: "$latestMail"
+          }
+        },
+        {
+          $lookup: {
+            from: "mails",
+            localField: "threadId",
+            foreignField: "threadId",
+            as: "mailDetails",
+            pipeline:[
+              {
+                $sort:{
+                  createdAt: 1
+                }
               },
-              subject: {
-                $arrayElemAt: [
-                  "$mailDetail.subject",
-                  0,
-                ],
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "senderId",
+                  foreignField: "_id",
+                  as: "senderEmail",
+                },
               },
-              content: {
-                $arrayElemAt: [
-                  "$mailDetail.content",
-                  0,
-                ],
-              },
-              receivedAt: 1,
-              isUnread: 1,
-              isTrashed:1,
-              isStarred:1
-            },
+              {
+                $project:{
+                      subject: 1,
+                      content: 1,
+                      createdAt: 1,
+                      senderId:1,
+                      senderDetail:1,
+                      senderName: {
+                        $arrayElemAt: [
+                          "$senderEmail.name",
+                          0,
+                        ],
+                      },
+                      senderEmail: {
+                        $arrayElemAt: [
+                          "$senderEmail.email",
+                          0,
+                        ],
+                      }
+                }
+              }
+            ]
+          }
         },
         {
             $match:
@@ -123,6 +149,7 @@ const getAllMails = AsyncHandler(async(req, res)=>{
                 isTrashed: false
               }
         },
+      ]
     ]
     const getAllMails = await MailRecipients.aggregate(pipeline);
 
@@ -471,7 +498,7 @@ const getSentMails = AsyncHandler(async(req, res)=>{
     const pipeline = [
       {
         $match:{
-          senderId: user._id
+          senderId: user?._id
         }
       },
       {

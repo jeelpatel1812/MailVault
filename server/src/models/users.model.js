@@ -13,6 +13,7 @@ const userSchema = new Schema(
         },
         password: String,
         refreshToken: String,
+        name: String,
         userName: String,
         profileImage: String,
         status: String

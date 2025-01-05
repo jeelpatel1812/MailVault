@@ -13,6 +13,10 @@ const mailRecipientsSchema = new Schema({
     isUnread: Boolean,
     isTrashed: Boolean,
     isStarred: Boolean,
+    threadId:{
+        type: String,
+        required: true
+    },
     receivedAt: Date
 }, {timestamp: true})
 

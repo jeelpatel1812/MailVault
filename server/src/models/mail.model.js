@@ -9,7 +9,15 @@ const mailSchema = new Schema({
     senderId:{ 
         type: Schema.Types.ObjectId, 
         ref: 'User' 
-    }
+    },
+    threadId:{
+        type: String,
+        required: true
+    },
+    ParentId:{
+        type: String
+    },
+    createdAt: Date
 }, {timestamp: true})
 
 export const Mail = mongoose.model("Mail", mailSchema);
