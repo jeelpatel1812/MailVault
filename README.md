@@ -7,3 +7,11 @@ Functionalities
   - logout
 - Mail
   - compose mail for multiple recipients
+  - schedule mail
+  - get mails with different categories like
+      - inbox
+      - starred
+      - trashed
+      - sent
+      - unread
+  - Categorize specific emails into different categories such as starred, trashed, unread, or read.
