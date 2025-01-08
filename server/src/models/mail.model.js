@@ -14,8 +14,11 @@ const mailSchema = new Schema({
         type: String,
         required: true
     },
-    ParentId:{
+    parentId:{
         type: String
+    },
+    attachments:{
+        type: [String]
     },
     createdAt: Date
 }, {timestamp: true})

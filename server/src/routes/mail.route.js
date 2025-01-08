@@ -1,9 +1,10 @@
 import { Router } from "express";
 import {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getTrashedMails, getStarredMails, getUnreadMails, readTheMail, scheduledMail, getSentMails} from "../controllers/mail.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
+import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router();
-router.route("/compose").post(verifyJWT, mailComposer)
+router.route("/compose").post(verifyJWT, upload.single("file"), mailComposer)
 router.route("/scheduleMail").post(verifyJWT, scheduledMail)
 router.route("/getAllMails").get(verifyJWT, getAllMails)
 router.route("/getStarredMails").get(verifyJWT, getStarredMails)

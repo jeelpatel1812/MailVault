@@ -7,15 +7,30 @@ import { ScheduledMail } from '../models/scheduled_mail.model.js';
 import cron from "node-cron";
 import ApiError from '../utils/apiError.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getObjectFromS3, uploadFileToS3 } from '../utils/awsS3.js';
+import path from 'path';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
     const user = req.user;
     if(!user) throw new ApiError(401, 'User not found.');
-    const {content, subject, recipientsEmail, parentId} = req.body;
+    const {content, subject, parentId} = req.body;
+    const recipientsEmail = JSON.parse(req.body.recipientsEmail);
     let threadId = uuidv4();
     let parentsSubject = null;
     let parentsThread = null;
+
+    // upload files
+    const fileName = path.join('uploads', req.file?.filename);
+    const bucketName = 'amzn-s3-bucket-a1b2c3d4-mail-vault/attachments';
+    const s3Key = path.basename(fileName); 
+    try{
+        const upload = uploadFileToS3(fileName, bucketName, s3Key);
+        console.log("log upload", upload);
+    }
+    catch(err){
+      throw new ApiError(500, 'File Upload Error at server.');
+    }
 
     //check for reply
     const parentMail = await Mail.find({_id: parentId});
@@ -28,6 +43,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
         content: content,
         parentId: parentId || null,
         threadId: parentsThread || threadId,
+        attachments: [fileName],
         createdAt: new Date()
     });
 
