@@ -14,7 +14,7 @@ export const upload = multer({
     storage, 
     limits: { fileSize: 5000000 },
     fileFilter: (req, file, cb) => {
-        console.log("checkkk", file.mimetype)
+        console.log("check file type", file.mimetype)
         if (file.mimetype === 'image/jpg' || file.mimetype === 'image/jpeg' || file.mimetype === 'image/png' || file.mimetype ==="application/pdf") {
           cb(null, true);
         } else {

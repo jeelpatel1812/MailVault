@@ -23,16 +23,18 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     let parentsThread = null;
 
     // upload files
-    const fileName = path.join('uploads', req.file?.filename);
-    const bucketName = `${AWS_BUCKET_NAME}/attachments` || 'amzn-s3-bucket-a1b2c3d4-mail-vault/attachments';
-    const s3Key = path.basename(fileName); 
-    console.log("check bucket name", bucketName, fileName, s3Key);
-    try{
-        const upload = uploadFileToS3(fileName, bucketName, s3Key);
-        console.log("log upload", upload);
-    }
-    catch(err){
-      throw new ApiError(500, 'File Upload Error at server.');
+    if(req.file){
+      const fileName = path.join('uploads', req.file?.filename);
+      const bucketName = `${AWS_BUCKET_NAME}/attachments` || 'amzn-s3-bucket-a1b2c3d4-mail-vault/attachments';
+      const s3Key = path.basename(fileName); 
+      console.log("check bucket name", bucketName, fileName, s3Key);
+      try{
+          const upload = uploadFileToS3(fileName, bucketName, s3Key);
+          console.log("log upload", upload);
+      }
+      catch(err){
+        throw new ApiError(500, 'File Upload Error at server.');
+      }
     }
 
     //check for reply
@@ -46,7 +48,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
         content: content,
         parentId: parentId || null,
         threadId: parentsThread || threadId,
-        attachments: [`attachments/${s3Key}`],
+        attachments: req.file ? [`attachments/${req.file?.filename}`] : [],
         createdAt: new Date()
     });
 
@@ -95,6 +97,8 @@ const scheduleMail = AsyncHandler(async(req, res)=>{
 
 const getInboxMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const pipeline = [
       [
         {
@@ -169,6 +173,8 @@ const getInboxMails = AsyncHandler(async(req, res)=>{
                 isTrashed: false
               }
         },
+        { $skip: page-1 }, 
+        { $limit: limit }, 
       ]
     ]
     let getInboxMails = await MailRecipients.aggregate(pipeline);
