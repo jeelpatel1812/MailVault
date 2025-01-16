@@ -7,8 +7,10 @@ import { ScheduledMail } from '../models/scheduled_mail.model.js';
 import cron from "node-cron";
 import ApiError from '../utils/apiError.js';
 import { v4 as uuidv4 } from 'uuid';
-import { getObjectFromS3, uploadFileToS3 } from '../utils/awsS3.js';
-import path from 'path';
+import { generatePresignedUrl, getObjectFromS3, uploadFileToS3 } from '../utils/awsS3.js';
+import path, { resolve } from 'path';
+import { AWS_BUCKET_NAME } from '../constants.js';
+import fs from 'fs';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
@@ -22,8 +24,9 @@ const mailComposer = AsyncHandler(async(req, res)=>{
 
     // upload files
     const fileName = path.join('uploads', req.file?.filename);
-    const bucketName = 'amzn-s3-bucket-a1b2c3d4-mail-vault/attachments';
+    const bucketName = `${AWS_BUCKET_NAME}/attachments` || 'amzn-s3-bucket-a1b2c3d4-mail-vault/attachments';
     const s3Key = path.basename(fileName); 
+    console.log("check bucket name", bucketName, fileName, s3Key);
     try{
         const upload = uploadFileToS3(fileName, bucketName, s3Key);
         console.log("log upload", upload);
@@ -43,7 +46,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
         content: content,
         parentId: parentId || null,
         threadId: parentsThread || threadId,
-        attachments: [fileName],
+        attachments: [`attachments/${s3Key}`],
         createdAt: new Date()
     });
 
@@ -70,7 +73,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     return res.json(new ApiResponse(201, {mailData: createdMail, recipientsData: recipientsData}, "Mail has been composed succesfully."))
 });
 
-const scheduledMail = AsyncHandler(async(req, res)=>{
+const scheduleMail = AsyncHandler(async(req, res)=>{
 
     const user = req.user;
     if(!user) throw new ApiError(401, 'User not found.');
@@ -90,7 +93,7 @@ const scheduledMail = AsyncHandler(async(req, res)=>{
     return res.json(new ApiResponse(201, {mailData: createdMail}, "Mail has been scheduled succesfully."))
 });
 
-const getAllMails = AsyncHandler(async(req, res)=>{
+const getInboxMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
     const pipeline = [
       [
@@ -142,6 +145,7 @@ const getAllMails = AsyncHandler(async(req, res)=>{
                       createdAt: 1,
                       senderId:1,
                       senderDetail:1,
+                      attachments: 1,
                       senderName: {
                         $arrayElemAt: [
                           "$senderEmail.name",
@@ -167,11 +171,70 @@ const getAllMails = AsyncHandler(async(req, res)=>{
         },
       ]
     ]
-    const getAllMails = await MailRecipients.aggregate(pipeline);
-
+    let getInboxMails = await MailRecipients.aggregate(pipeline);
+    const updatedMails = await updateInboxMailsWithPresignedLinks(getInboxMails);
+    
     return res
-        .send(new ApiResponse(201, {mails: getAllMails}, "Successfully"));
+        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
 })
+
+// update mails
+const updateInboxMailsWithPresignedLinks = async (getInboxMails) => {
+  if (!getInboxMails) return;
+
+  const updatedInboxMails = await Promise.all(
+    getInboxMails.map(async (mailThread) => {
+      const updatedMailDetails = await Promise.all(
+        mailThread.mailDetails?.map(async (mail) => {
+          const attachment = mail?.attachments?.[0];
+          if (attachment) {
+            try {
+              const bucketName = `${AWS_BUCKET_NAME}/attachments`;
+              const s3Key = path.basename(attachment);
+              const generatedUrl = await getPreSignedLinkFromS3(bucketName, s3Key);
+              return {
+                ...mail,
+                attachments: [generatedUrl, ...mail.attachments.slice(1)], // Replace only the first attachment
+              };
+            } catch (err) {
+              console.error(`Error generating presigned URL for ${attachment}:`, err);
+              return mail;
+            }
+          }
+          return mail;
+        }) || []
+      );
+
+      return {
+        ...mailThread,
+        mailDetails: updatedMailDetails,
+      };
+    })
+  );
+
+  return updatedInboxMails;
+};
+
+// get files
+const getPreSignedLinkFromS3 = async(bucketName, s3Key) => {
+  console.log("check bucket name", bucketName, s3Key);
+  try{
+    //to generate presigned link
+    const url = await generatePresignedUrl(bucketName, s3Key);
+    console.log("check presigned url", url);
+    return url;
+    //to download file
+      // let data = await getObjectFromS3(bucketName, s3Key);
+      // const fileName = path.join('downloads', s3Key);
+      // fs.writeFile(fileName, data, (err) => {
+      //   if (err) throw err;
+      //   console.log('File has been saved locally.');
+      // });
+  }
+  catch(err){
+    throw new ApiError(500, err);
+  }
+}
 
 const toggleStarredMail = AsyncHandler(async(req, res)=>{
     const user = req.user;
@@ -563,4 +626,4 @@ const getSentMails = AsyncHandler(async(req, res)=>{
     const allSentMails = await Mail.aggregate(pipeline);
     return res.json(new ApiResponse(200, {sentMails: allSentMails}, "Successfull"))
 })
-export {mailComposer, getAllMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduledMail, getSentMails};
+export {mailComposer, getInboxMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduleMail, getSentMails};

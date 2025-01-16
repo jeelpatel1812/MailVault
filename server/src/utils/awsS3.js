@@ -42,7 +42,25 @@ function getObjectFromS3(bucketName, s3Key) {
         resolve(data.Body);
       });
     });
+}
+
+
+// get presigned url
+function generatePresignedUrl(bucketName, key) {
+  const params = {
+    Bucket: bucketName,
+    Key: key,
+    Expires: 60 * 30, // URL valid for 5 minutes
+  };
+
+  try {
+    const url = s3.getSignedUrl('getObject', params);
+    return url;
+  } catch (error) {
+    console.error('Error generating presigned URL:', error.message);
+    throw error;
   }
+}
 
 
-export {uploadFileToS3, getObjectFromS3}
+export {uploadFileToS3, getObjectFromS3, generatePresignedUrl}
