@@ -100,82 +100,81 @@ const getInboxMails = AsyncHandler(async(req, res)=>{
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const pipeline = [
-      [
-        {
-          $match:{
-            recipientId: user?._id
-          }
-        },
-        {
-          $sort:{
-            receivedAt: -1
-          }
-        },
-        {
-          $group:{
-            _id: "$threadId",
-            latestMail:  { $first: "$$ROOT"}
-          }
-        },
-        {
-          $replaceRoot: {
-            newRoot: "$latestMail"
-          }
-        },
-        {
-          $lookup: {
-            from: "mails",
-            localField: "threadId",
-            foreignField: "threadId",
-            as: "mailDetails",
-            pipeline:[
-              {
-                $sort:{
-                  createdAt: 1
-                }
-              },
-              {
-                $lookup: {
-                  from: "users",
-                  localField: "senderId",
-                  foreignField: "_id",
-                  as: "senderEmail",
-                },
-              },
-              {
-                $project:{
-                      subject: 1,
-                      content: 1,
-                      createdAt: 1,
-                      senderId:1,
-                      senderDetail:1,
-                      attachments: 1,
-                      senderName: {
-                        $arrayElemAt: [
-                          "$senderEmail.name",
-                          0,
-                        ],
-                      },
-                      senderEmail: {
-                        $arrayElemAt: [
-                          "$senderEmail.email",
-                          0,
-                        ],
-                      }
-                }
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
+            {
+              $sort:{
+                createdAt: 1
               }
-            ]
-          }
-        },
-        {
-            $match:
-              {
-                isTrashed: false
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+            {
+              $project:{
+                    subject: 1,
+                    content: 1,
+                    createdAt: 1,
+                    senderId:1,
+                    senderDetail:1,
+                    attachments: 1,
+                    senderName: {
+                      $arrayElemAt: [
+                        "$senderEmail.name",
+                        0,
+                      ],
+                    },
+                    senderEmail: {
+                      $arrayElemAt: [
+                        "$senderEmail.email",
+                        0,
+                      ],
+                    }
               }
-        },
-        { $skip: page-1 }, 
-        { $limit: limit }, 
-      ]
+            }
+          ]
+        }
+      },
+      {
+          $match:
+            {
+              isTrashed: false
+            }
+      },
+      {
+        $sort:{
+          receivedAt: -1
+        }
+      },
+      { $skip: (page-1)* limit }, 
+      { $limit: limit }
+      
     ]
     let getInboxMails = await MailRecipients.aggregate(pipeline);
     const updatedMails = await updateInboxMailsWithPresignedLinks(getInboxMails);
@@ -197,7 +196,7 @@ const updateInboxMailsWithPresignedLinks = async (getInboxMails) => {
             try {
               const bucketName = `${AWS_BUCKET_NAME}/attachments`;
               const s3Key = path.basename(attachment);
-              const generatedUrl = await getPreSignedLinkFromS3(bucketName, s3Key);
+              const generatedUrl = await generatePresignedUrl(bucketName, s3Key);
               return {
                 ...mail,
                 attachments: [generatedUrl, ...mail.attachments.slice(1)], // Replace only the first attachment
@@ -221,30 +220,10 @@ const updateInboxMailsWithPresignedLinks = async (getInboxMails) => {
   return updatedInboxMails;
 };
 
-// get files
-const getPreSignedLinkFromS3 = async(bucketName, s3Key) => {
-  console.log("check bucket name", bucketName, s3Key);
-  try{
-    //to generate presigned link
-    const url = await generatePresignedUrl(bucketName, s3Key);
-    console.log("check presigned url", url);
-    return url;
-    //to download file
-      // let data = await getObjectFromS3(bucketName, s3Key);
-      // const fileName = path.join('downloads', s3Key);
-      // fs.writeFile(fileName, data, (err) => {
-      //   if (err) throw err;
-      //   console.log('File has been saved locally.');
-      // });
-  }
-  catch(err){
-    throw new ApiError(500, err);
-  }
-}
 
 const toggleStarredMail = AsyncHandler(async(req, res)=>{
     const user = req.user;
-    const mailId = req.body.mailId;
+    const mailId = req.params.mailId;
     const selectedMail = await MailRecipients.findOne({
         $and:[
                 {recipientId: user?._id},
@@ -261,7 +240,7 @@ const toggleStarredMail = AsyncHandler(async(req, res)=>{
 
 const trashTheMail = AsyncHandler(async(req, res)=>{
     const user = req.user;
-    const mailId = req.body.mailId;
+    const {mailId} = req.params;
     const selectedMail = await MailRecipients.findOne({
         $and:[
                 {recipientId: user?._id},
@@ -278,7 +257,7 @@ const trashTheMail = AsyncHandler(async(req, res)=>{
 
 const readTheMail = AsyncHandler(async(req, res)=>{
     const user = req.user;
-    const mailId = req.body.mailId;
+    const mailId = req.params.mailId;
     const selectedMail = await MailRecipients.findOne({
         $and:[
                 {recipientId: user?._id},
@@ -295,7 +274,7 @@ const readTheMail = AsyncHandler(async(req, res)=>{
 
 const unTrashTheMail = AsyncHandler(async(req, res)=>{
     const user = req.user;
-    const mailId = req.body.mailId;
+    const mailId = req.params.mailId;
     const selectedMail = await MailRecipients.findOne({
         $and:[
                 {recipientId: user?._id},
@@ -312,207 +291,263 @@ const unTrashTheMail = AsyncHandler(async(req, res)=>{
 
 const getStarredMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const pipeline = [
-        {
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
+            {
+              $sort:{
+                createdAt: 1
+              }
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+            {
+              $project:{
+                    subject: 1,
+                    content: 1,
+                    createdAt: 1,
+                    senderId:1,
+                    senderDetail:1,
+                    attachments: 1,
+                    senderName: {
+                      $arrayElemAt: [
+                        "$senderEmail.name",
+                        0,
+                      ],
+                    },
+                    senderEmail: {
+                      $arrayElemAt: [
+                        "$senderEmail.email",
+                        0,
+                      ],
+                    }
+              }
+            }
+          ]
+        }
+      },
+      {
           $match:
             {
-              recipientId: user?._id
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "mails",
-              localField: "mailId",
-              foreignField: "_id",
-              as: "mailDetail",
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "users",
-              localField: "mailDetail.senderId",
-              foreignField: "_id",
-              as: "senderDetail",
-            },
-        },
-        {
-          $project:
-            {
-              mailId: 1,
-              senderMailId: {
-                $arrayElemAt: [
-                  "$senderDetail.email",
-                  0,
-                ],
-              },
-              subject: {
-                $arrayElemAt: [
-                  "$mailDetail.subject",
-                  0,
-                ],
-              },
-              content: {
-                $arrayElemAt: [
-                  "$mailDetail.content",
-                  0,
-                ],
-              },
-              receivedAt: 1,
-              isUnread: 1,
-              isTrashed:1,
-              isStarred:1
-            },
-        },
-        {
-            $match:
-              {
-                isStarred: true
-              }
-        },
+              isStarred: true
+            }
+      },
+      {
+        $sort:{
+          receivedAt: -1
+        }
+      },
+      { $skip: (page-1)* limit }, 
+      { $limit: limit }
     ]
     const getAllStarredMails = await MailRecipients.aggregate(pipeline);
+    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllStarredMails);
 
     return res
-        .send(new ApiResponse(201, {mails: getAllStarredMails}, "Successfully"));
+        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
 })
 
 
 const getTrashedMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const pipeline = [
-        {
-          $match:
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
             {
-              recipientId: user?._id
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "mails",
-              localField: "mailId",
-              foreignField: "_id",
-              as: "mailDetail",
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "users",
-              localField: "mailDetail.senderId",
-              foreignField: "_id",
-              as: "senderDetail",
-            },
-        },
-        {
-          $project:
-            {
-              mailId: 1,
-              senderMailId: {
-                $arrayElemAt: [
-                  "$senderDetail.email",
-                  0,
-                ],
-              },
-              subject: {
-                $arrayElemAt: [
-                  "$mailDetail.subject",
-                  0,
-                ],
-              },
-              content: {
-                $arrayElemAt: [
-                  "$mailDetail.content",
-                  0,
-                ],
-              },
-              receivedAt: 1,
-              isUnread: 1,
-              isTrashed:1,
-              isStarred:1
-            },
-        },
-        {
-            $match:
-              {
-                isTrashed: true
+              $sort:{
+                createdAt: 1
               }
-        },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+            {
+              $project:{
+                    subject: 1,
+                    content: 1,
+                    createdAt: 1,
+                    senderId:1,
+                    senderDetail:1,
+                    attachments: 1,
+                    senderName: {
+                      $arrayElemAt: [
+                        "$senderEmail.name",
+                        0,
+                      ],
+                    },
+                    senderEmail: {
+                      $arrayElemAt: [
+                        "$senderEmail.email",
+                        0,
+                      ],
+                    }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $match:
+          {
+            isTrashed: true
+          }
+      },
+      {
+        $sort:{
+          receivedAt: -1
+        }
+      },
+      { $skip: (page-1)* limit },  
+      { $limit: limit }
     ]
     const getAllTrashedMails = await MailRecipients.aggregate(pipeline);
+    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllTrashedMails);
 
     return res
-        .send(new ApiResponse(201, {mails: getAllTrashedMails}, "Successfully"));
+        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
 })
 
 const getUnreadMails = AsyncHandler(async(req, res)=>{
     const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const pipeline = [
-        {
-          $match:
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
             {
-              recipientId: user?._id
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "mails",
-              localField: "mailId",
-              foreignField: "_id",
-              as: "mailDetail",
-            },
-        },
-        {
-          $lookup:
-            {
-              from: "users",
-              localField: "mailDetail.senderId",
-              foreignField: "_id",
-              as: "senderDetail",
-            },
-        },
-        {
-          $project:
-            {
-              mailId: 1,
-              senderMailId: {
-                $arrayElemAt: [
-                  "$senderDetail.email",
-                  0,
-                ],
-              },
-              subject: {
-                $arrayElemAt: [
-                  "$mailDetail.subject",
-                  0,
-                ],
-              },
-              content: {
-                $arrayElemAt: [
-                  "$mailDetail.content",
-                  0,
-                ],
-              },
-              receivedAt: 1,
-              isUnread: 1,
-              isTrashed:1,
-              isStarred:1
-            },
-        },
-        {
-            $match:
-              {
-                isUnread: true
+              $sort:{
+                createdAt: 1
               }
-        },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+            {
+              $project:{
+                    subject: 1,
+                    content: 1,
+                    createdAt: 1,
+                    senderId:1,
+                    senderDetail:1,
+                    attachments: 1,
+                    senderName: {
+                      $arrayElemAt: [
+                        "$senderEmail.name",
+                        0,
+                      ],
+                    },
+                    senderEmail: {
+                      $arrayElemAt: [
+                        "$senderEmail.email",
+                        0,
+                      ],
+                    }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $match:{
+          isUnread: true
+        }
+      },
+      {
+        $sort:{
+          receivedAt: -1
+        }
+      },
+      { $skip: (page-1)* limit }, 
+      { $limit: limit }
     ]
     const getAllUnreadMails = await MailRecipients.aggregate(pipeline);
+    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllUnreadMails);
 
     return res
-        .send(new ApiResponse(201, {mails: getAllUnreadMails}, "Successfully"));
+        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
 })
 
 cron.schedule("*/30 * * * * *", AsyncHandler(async(req, res)=>{

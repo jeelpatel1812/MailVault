@@ -11,9 +11,9 @@ router.route("/getStarredMails").get(verifyJWT, getStarredMails)
 router.route("/getTrashedMails").get(verifyJWT, getTrashedMails)
 router.route("/getUnreadMails").get(verifyJWT, getUnreadMails)
 router.route("/getSentMails").get(verifyJWT, getSentMails)
-router.route("/setStarredMail").patch(verifyJWT, toggleStarredMail)
-router.route("/trashTheMail").patch(verifyJWT, trashTheMail)
-router.route("/readTheMail").patch(verifyJWT, readTheMail)
-router.route("/unTrashTheMail").patch(verifyJWT, unTrashTheMail)
+router.route("/setStarredMail/:mailId").patch(verifyJWT, toggleStarredMail)
+router.route("/trashTheMail/:mailId").patch(verifyJWT, trashTheMail)
+router.route("/readTheMail/:mailId").patch(verifyJWT, readTheMail)
+router.route("/unTrashTheMail/:mailId").patch(verifyJWT, unTrashTheMail)
 
 export default router
