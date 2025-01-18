@@ -95,7 +95,7 @@ const scheduleMail = AsyncHandler(async(req, res)=>{
     return res.json(new ApiResponse(201, {mailData: createdMail}, "Mail has been scheduled succesfully."))
 });
 
-const getInboxMails = AsyncHandler(async(req, res)=>{
+const fetchMailsByCategory = AsyncHandler(async(req, res)=>{
     const user = req.user;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -161,26 +161,167 @@ const getInboxMails = AsyncHandler(async(req, res)=>{
           ]
         }
       },
+    ];
+    
+    //apply filters
+    console.log("check filters", req.query)
+    const filterTrashed = [
       {
-          $match:
-            {
-              isTrashed: false
-            }
+        $match:
+        {
+          isTrashed: true
+        }
       },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'true') pipeline.push(...filterTrashed);
+
+    const filterUntrashed = [
+      {
+        $match:
+        {
+          isTrashed: false
+        }
+      },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'false') pipeline.push(...filterUntrashed)
+
+    const filterStarred = [
+      {
+        $match:
+        {
+          isStarred: true
+        }
+      },
+    ]
+    if(req.query.isStarred != undefined && req.query.isStarred == 'true') pipeline.push(...filterStarred)
+
+    const filterUnread = [
+      {
+        $match:
+        {
+          isUnread: true
+        }
+      },
+    ]
+    if(req.query.isUnread != undefined && req.query.isUnread == 'true') pipeline.push(...filterUnread)
+      
+    
+    //sort and paginate mails
+    const sortAndPaginate = [  
       {
         $sort:{
           receivedAt: -1
         }
       },
       { $skip: (page-1)* limit }, 
-      { $limit: limit }
-      
+      { $limit: limit },
     ]
-    let getInboxMails = await MailRecipients.aggregate(pipeline);
-    const updatedMails = await updateInboxMailsWithPresignedLinks(getInboxMails);
+    pipeline.push(...sortAndPaginate); 
+
+    let allCategoriedMails = await MailRecipients.aggregate(pipeline);
+    const mailsWithPresignedUrl = await updateInboxMailsWithPresignedLinks(allCategoriedMails);
     
     return res
-        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
+        .send(new ApiResponse(201, {mails: mailsWithPresignedUrl}, "Successfully"));
+})
+
+const getMailCountsByCategory = AsyncHandler(async(req, res)=>{
+    const user = req.user;
+    const pipeline = [
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
+            {
+              $sort:{
+                createdAt: 1
+              }
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+          ]
+        }
+      },
+    ];
+    
+
+    //apply filters
+    console.log("check filters", req.query)
+    const filterTrashed = [
+      {
+        $match:
+        {
+          isTrashed: true
+        }
+      },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'true') pipeline.push(...filterTrashed);
+
+    const filterUntrashed = [
+      {
+        $match:
+        {
+          isTrashed: false
+        }
+      },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'false') pipeline.push(...filterUntrashed)
+
+    const filterStarred = [
+      {
+        $match:
+        {
+          isStarred: true
+        }
+      },
+    ]
+    if(req.query.isStarred != undefined && req.query.isStarred == 'true') pipeline.push(...filterStarred)
+
+    const filterUnread = [
+      {
+        $match:
+        {
+          isUnread: true
+        }
+      },
+    ]
+    if(req.query.isUnread != undefined && req.query.isUnread == 'true') pipeline.push(...filterUnread)
+    
+    const filteredCount = [
+      { $count: "filteredCount" }
+    ]
+    pipeline.push(...filteredCount);
+
+    let allCategoriedMails = await MailRecipients.aggregate(pipeline);
+    let result = await updateInboxMailsWithPresignedLinks(allCategoriedMails);
+    if(result?.length == 0) result = [{"filteredCount": 0}]
+    return res
+        .send(new ApiResponse(201, result, "Successfully"));
 })
 
 // update mails
@@ -287,267 +428,6 @@ const unTrashTheMail = AsyncHandler(async(req, res)=>{
 
     return res.
     json(new ApiResponse(204,{}, 'Updated untrashed.' ))
-})
-
-const getStarredMails = AsyncHandler(async(req, res)=>{
-    const user = req.user;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const pipeline = [
-      {
-        $match:{
-          recipientId: user?._id
-        }
-      },
-      {
-        $group:{
-          _id: "$threadId",
-          latestMail:  { $first: "$$ROOT"}
-        }
-      },
-      {
-        $replaceRoot: {
-          newRoot: "$latestMail"
-        }
-      },
-      {
-        $lookup: {
-          from: "mails",
-          localField: "threadId",
-          foreignField: "threadId",
-          as: "mailDetails",
-          pipeline:[
-            {
-              $sort:{
-                createdAt: 1
-              }
-            },
-            {
-              $lookup: {
-                from: "users",
-                localField: "senderId",
-                foreignField: "_id",
-                as: "senderEmail",
-              },
-            },
-            {
-              $project:{
-                    subject: 1,
-                    content: 1,
-                    createdAt: 1,
-                    senderId:1,
-                    senderDetail:1,
-                    attachments: 1,
-                    senderName: {
-                      $arrayElemAt: [
-                        "$senderEmail.name",
-                        0,
-                      ],
-                    },
-                    senderEmail: {
-                      $arrayElemAt: [
-                        "$senderEmail.email",
-                        0,
-                      ],
-                    }
-              }
-            }
-          ]
-        }
-      },
-      {
-          $match:
-            {
-              isStarred: true
-            }
-      },
-      {
-        $sort:{
-          receivedAt: -1
-        }
-      },
-      { $skip: (page-1)* limit }, 
-      { $limit: limit }
-    ]
-    const getAllStarredMails = await MailRecipients.aggregate(pipeline);
-    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllStarredMails);
-
-    return res
-        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
-})
-
-
-const getTrashedMails = AsyncHandler(async(req, res)=>{
-    const user = req.user;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const pipeline = [
-      {
-        $match:{
-          recipientId: user?._id
-        }
-      },
-      {
-        $group:{
-          _id: "$threadId",
-          latestMail:  { $first: "$$ROOT"}
-        }
-      },
-      {
-        $replaceRoot: {
-          newRoot: "$latestMail"
-        }
-      },
-      {
-        $lookup: {
-          from: "mails",
-          localField: "threadId",
-          foreignField: "threadId",
-          as: "mailDetails",
-          pipeline:[
-            {
-              $sort:{
-                createdAt: 1
-              }
-            },
-            {
-              $lookup: {
-                from: "users",
-                localField: "senderId",
-                foreignField: "_id",
-                as: "senderEmail",
-              },
-            },
-            {
-              $project:{
-                    subject: 1,
-                    content: 1,
-                    createdAt: 1,
-                    senderId:1,
-                    senderDetail:1,
-                    attachments: 1,
-                    senderName: {
-                      $arrayElemAt: [
-                        "$senderEmail.name",
-                        0,
-                      ],
-                    },
-                    senderEmail: {
-                      $arrayElemAt: [
-                        "$senderEmail.email",
-                        0,
-                      ],
-                    }
-              }
-            }
-          ]
-        }
-      },
-      {
-        $match:
-          {
-            isTrashed: true
-          }
-      },
-      {
-        $sort:{
-          receivedAt: -1
-        }
-      },
-      { $skip: (page-1)* limit },  
-      { $limit: limit }
-    ]
-    const getAllTrashedMails = await MailRecipients.aggregate(pipeline);
-    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllTrashedMails);
-
-    return res
-        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
-})
-
-const getUnreadMails = AsyncHandler(async(req, res)=>{
-    const user = req.user;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const pipeline = [
-      {
-        $match:{
-          recipientId: user?._id
-        }
-      },
-      {
-        $group:{
-          _id: "$threadId",
-          latestMail:  { $first: "$$ROOT"}
-        }
-      },
-      {
-        $replaceRoot: {
-          newRoot: "$latestMail"
-        }
-      },
-      {
-        $lookup: {
-          from: "mails",
-          localField: "threadId",
-          foreignField: "threadId",
-          as: "mailDetails",
-          pipeline:[
-            {
-              $sort:{
-                createdAt: 1
-              }
-            },
-            {
-              $lookup: {
-                from: "users",
-                localField: "senderId",
-                foreignField: "_id",
-                as: "senderEmail",
-              },
-            },
-            {
-              $project:{
-                    subject: 1,
-                    content: 1,
-                    createdAt: 1,
-                    senderId:1,
-                    senderDetail:1,
-                    attachments: 1,
-                    senderName: {
-                      $arrayElemAt: [
-                        "$senderEmail.name",
-                        0,
-                      ],
-                    },
-                    senderEmail: {
-                      $arrayElemAt: [
-                        "$senderEmail.email",
-                        0,
-                      ],
-                    }
-              }
-            }
-          ]
-        }
-      },
-      {
-        $match:{
-          isUnread: true
-        }
-      },
-      {
-        $sort:{
-          receivedAt: -1
-        }
-      },
-      { $skip: (page-1)* limit }, 
-      { $limit: limit }
-    ]
-    const getAllUnreadMails = await MailRecipients.aggregate(pipeline);
-    const updatedMails = await updateInboxMailsWithPresignedLinks(getAllUnreadMails);
-
-    return res
-        .send(new ApiResponse(201, {mails: updatedMails}, "Successfully"));
 })
 
 cron.schedule("*/30 * * * * *", AsyncHandler(async(req, res)=>{
@@ -667,4 +547,4 @@ const getSentMails = AsyncHandler(async(req, res)=>{
     const allSentMails = await Mail.aggregate(pipeline);
     return res.json(new ApiResponse(200, {sentMails: allSentMails}, "Successfull"))
 })
-export {mailComposer, getInboxMails, toggleStarredMail, trashTheMail, unTrashTheMail, getStarredMails, getTrashedMails, readTheMail, getUnreadMails, scheduleMail, getSentMails};
+export {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory};
