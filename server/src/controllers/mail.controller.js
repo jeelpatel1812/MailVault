@@ -117,6 +117,13 @@ const fetchMailsByCategory = AsyncHandler(async(req, res)=>{
         }
       },
       {
+        $project: {
+          mailId: 0,
+          recipientId: 0,
+          receivedAt: 0
+        }
+      },
+      {
         $lookup: {
           from: "mails",
           localField: "threadId",
@@ -142,7 +149,6 @@ const fetchMailsByCategory = AsyncHandler(async(req, res)=>{
                     content: 1,
                     createdAt: 1,
                     senderId:1,
-                    senderDetail:1,
                     attachments: 1,
                     senderName: {
                       $arrayElemAt: [
@@ -165,6 +171,156 @@ const fetchMailsByCategory = AsyncHandler(async(req, res)=>{
     
     //apply filters
     console.log("check filters", req.query)
+    const filterTrashed = [
+      {
+        $match:
+        {
+          isTrashed: true
+        }
+      },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'true') pipeline.push(...filterTrashed);
+
+    const filterUntrashed = [
+      {
+        $match:
+        {
+          isTrashed: false
+        }
+      },
+    ]
+    if(req.query.isTrashed != undefined && req.query.isTrashed == 'false') pipeline.push(...filterUntrashed)
+
+    const filterStarred = [
+      {
+        $match:
+        {
+          isStarred: true
+        }
+      },
+    ]
+    if(req.query.isStarred != undefined && req.query.isStarred == 'true') pipeline.push(...filterStarred)
+
+    const filterUnread = [
+      {
+        $match:
+        {
+          isUnread: true
+        }
+      },
+    ]
+    if(req.query.isUnread != undefined && req.query.isUnread == 'true') pipeline.push(...filterUnread)
+      
+    
+    //sort and paginate mails
+    const sortAndPaginate = [  
+      {
+        $sort:{
+          receivedAt: -1
+        }
+      },
+      { $skip: (page-1)* limit }, 
+      { $limit: limit },
+    ]
+    pipeline.push(...sortAndPaginate); 
+
+    let allCategoriedMails = await MailRecipients.aggregate(pipeline);
+    const mailsWithPresignedUrl = allCategoriedMails || await updateInboxMailsWithPresignedLinks(allCategoriedMails);
+    
+    return res
+        .send(new ApiResponse(201, {mails: mailsWithPresignedUrl}, "Successfully"));
+})
+
+const fetchMailsBySearch = AsyncHandler(async(req, res)=>{
+    const user = req.user;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const searchable = req.query.searchable
+
+    const pipeline = [
+      {
+        $match:{
+          recipientId: user?._id
+        }
+      },
+      {
+        $group:{
+          _id: "$threadId",
+          latestMail:  { $first: "$$ROOT"}
+        }
+      },
+      {
+        $replaceRoot: {
+          newRoot: "$latestMail"
+        }
+      },
+      {
+        $lookup: {
+          from: "mails",
+          localField: "threadId",
+          foreignField: "threadId",
+          as: "mailDetails",
+          pipeline:[
+            {
+              $search: {
+                index: "default",
+                text: {
+                  query: searchable,
+                  path: {
+                    wildcard: "?"
+                  },
+                  fuzzy: {}
+                }
+              }
+            },
+            {
+              $sort:{
+                createdAt: 1
+              }
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "senderId",
+                foreignField: "_id",
+                as: "senderEmail",
+              },
+            },
+            {
+              $project:{
+                    subject: 1,
+                    content: 1,
+                    createdAt: 1,
+                    senderId:1,
+                    attachments: 1,
+                    senderName: {
+                      $arrayElemAt: [
+                        "$senderEmail.name",
+                        0,
+                      ],
+                    },
+                    senderEmail: {
+                      $arrayElemAt: [
+                        "$senderEmail.email",
+                        0,
+                      ],
+                    }
+              }
+            }
+          ]
+        }
+      },
+    ];
+    
+    //remove non-relevant data
+    const nonRelevant = [
+      {
+        $match: {mailDetails: { $exists: true, $type: "array", $not: { $size: 0 } }}
+      },
+    ]
+    pipeline.push(...nonRelevant);
+    //apply filters
+    console.log("check filters", searchable)
     const filterTrashed = [
       {
         $match:
@@ -430,7 +586,7 @@ const unTrashTheMail = AsyncHandler(async(req, res)=>{
     json(new ApiResponse(204,{}, 'Updated untrashed.' ))
 })
 
-cron.schedule("*/30 * * * * *", AsyncHandler(async(req, res)=>{
+cron.schedule("*/59 * * * * *", AsyncHandler(async(req, res)=>{
     // get all executable mail
     const currentTime = new Date().toISOString();
     const mailsToBeExecuted = await ScheduledMail.find({scheduledTime: { $lt: currentTime }});
@@ -547,4 +703,4 @@ const getSentMails = AsyncHandler(async(req, res)=>{
     const allSentMails = await Mail.aggregate(pipeline);
     return res.json(new ApiResponse(200, {sentMails: allSentMails}, "Successfull"))
 })
-export {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory};
+export {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory, fetchMailsBySearch};

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory} from "../controllers/mail.controller.js";
+import {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory, fetchMailsBySearch} from "../controllers/mail.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 
@@ -16,5 +16,7 @@ router.route("/readTheMail/:mailId").patch(verifyJWT, readTheMail)
 router.route("/unTrashTheMail/:mailId").patch(verifyJWT, unTrashTheMail)
 
 router.route("/getMailCountsByCategory").get(verifyJWT, getMailCountsByCategory)
+
+router.route("/searchMail").get(verifyJWT, fetchMailsBySearch)
 
 export default router
