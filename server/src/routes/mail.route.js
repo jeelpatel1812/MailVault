@@ -2,6 +2,7 @@ import { Router } from "express";
 import {mailComposer, fetchMailsByCategory, toggleStarredMail, trashTheMail, unTrashTheMail, readTheMail, scheduleMail, getSentMails, getMailCountsByCategory, fetchMailsBySearch} from "../controllers/mail.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
+import { cacheMiddleware } from "../middlewares/cache.middleware.js";
 
 const router = Router();
 router.route("/compose").post(verifyJWT, upload.single("file"), mailComposer)
@@ -17,6 +18,6 @@ router.route("/unTrashTheMail/:mailId").patch(verifyJWT, unTrashTheMail)
 
 router.route("/getMailCountsByCategory").get(verifyJWT, getMailCountsByCategory)
 
-router.route("/searchMail").get(verifyJWT, fetchMailsBySearch)
+router.route("/searchMail").get(verifyJWT, cacheMiddleware, fetchMailsBySearch)
 
 export default router

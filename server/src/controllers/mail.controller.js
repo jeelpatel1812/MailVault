@@ -7,10 +7,10 @@ import { ScheduledMail } from '../models/scheduled_mail.model.js';
 import cron from "node-cron";
 import ApiError from '../utils/apiError.js';
 import { v4 as uuidv4 } from 'uuid';
-import { generatePresignedUrl, getObjectFromS3, uploadFileToS3 } from '../utils/awsS3.js';
-import path, { resolve } from 'path';
+import { generatePresignedUrl, uploadFileToS3 } from '../utils/awsS3.js';
+import path from 'path';
 import { AWS_BUCKET_NAME } from '../constants.js';
-import fs from 'fs';
+import { redisClient } from '../utils/redisClient.js';
 
 const mailComposer = AsyncHandler(async(req, res)=>{
 
@@ -267,7 +267,7 @@ const fetchMailsBySearch = AsyncHandler(async(req, res)=>{
                 text: {
                   query: searchable,
                   path: {
-                    wildcard: "?"
+                    wildcard: "*"
                   },
                   fuzzy: {}
                 }
@@ -377,6 +377,9 @@ const fetchMailsBySearch = AsyncHandler(async(req, res)=>{
     let allCategoriedMails = await MailRecipients.aggregate(pipeline);
     const mailsWithPresignedUrl = await updateInboxMailsWithPresignedLinks(allCategoriedMails);
     
+    const cacheKey = `search:${searchable}`;
+    redisClient.set(cacheKey, JSON.stringify(mailsWithPresignedUrl), "EX", 900);
+    console.log(`Added new ${cacheKey} cache-key.`);
     return res
         .send(new ApiResponse(201, {mails: mailsWithPresignedUrl}, "Successfully"));
 })
