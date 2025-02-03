@@ -17,7 +17,7 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     const user = req.user;
     if(!user) throw new ApiError(401, 'User not found.');
     const {content, subject, parentId} = req.body;
-    const recipientsEmail = JSON.parse(req.body.recipientsEmail);
+    const recipientsEmail = req.body.recipientsEmail.split(",");
     let threadId = uuidv4();
     let parentsSubject = null;
     let parentsThread = null;
@@ -38,8 +38,8 @@ const mailComposer = AsyncHandler(async(req, res)=>{
     }
 
     //check for reply
-    const parentMail = await Mail.find({_id: parentId});
-    if(parentMail.length){
+    const parentMail = parentId ? await Mail.find({_id: parentId}) : null;
+    if(parentMail && parentMail.length){
         parentsThread = parentMail[0]?.threadId;
     }
     const mail = await Mail.create({

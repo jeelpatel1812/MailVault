@@ -1,0 +1,16 @@
+.compose-button-div{
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    background-color: rgb(11, 87, 208);
+    border: 2px solid blue;
+    border-radius: 25%;
+    padding: 8px;
+    color: white;
+    z-index: 10000;
+    cursor: pointer;
+}
+
+.compose-button-div:hover{
+    background-color: #1b61d1;
+}

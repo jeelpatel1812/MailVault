@@ -1,0 +1,47 @@
+.compose-mail-dialog{
+    min-width: 400px;
+    min-height: 400px;
+    border: 3p solid red
+}
+
+.attachment-button {
+    background-color: white;
+    color: grey;
+    width: 30px;
+    height: 30px;
+}
+
+.send-button {
+    background-color: #0b57d0;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 0;
+    border-top-left-radius: 18px;
+    border-top-right-radius: 0;
+    max-width: 80px;
+    min-width: 62px;
+    margin: 0px;
+    text-transform: none
+}
+
+.send-button:hover {
+    background-color: #1b61d1;
+}
+
+.send-schedule-button {
+    background-color: #0b57d0;
+    border-bottom-right-radius: 18px;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 18px;
+    border-top-left-radius: 0;
+    width: 40px;
+    height: 36px;
+    margin: 0.5px;
+    padding: 0px 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.send-schedule-button:hover {
+    background-color: #1b61d1;
+}
