@@ -3,12 +3,14 @@ import { MailComposer } from '../MailComposer/mailComposer';
 import Snackbar, { SnackbarCloseReason } from '@mui/material/Snackbar';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
-import CreateIcon from '@mui/icons-material/Create';
-import './mailInbox.css'
-export const MailList = (props) => {
+import './mailContainer.css'
+import { Box} from "@mui/material";
+import SideBar from '../SideBar/sideBar';
+import EmailList from '../MailList/mailList';
+export const MailContainer = (props) => {
 
-  const [isSnackBarShowed, setIsSnackBarShowed] = useState(true);
-  const [isComposerOpened, setIsComposerOpened] = useState(true);
+  const [isSnackBarShowed, setIsSnackBarShowed] = useState(false);
+  const [isComposerOpened, setIsComposerOpened] = useState(false);
   const handleClose = () => {
     setIsSnackBarShowed(false);
   };
@@ -29,19 +31,19 @@ export const MailList = (props) => {
     </React.Fragment>
   );
 
+  
   return (
     <>
       <div>
-        All mails will be listed here.
+      <Box sx={{ display: "flex" }}>
+        <SideBar handleOpenCloseComposer={handleClickComposeToggle}/>
+        <EmailList />
+      </Box>
       </div>
 
       {
         isComposerOpened && <MailComposer/>
       }
-
-      <div className='compose-button-div' onClick={handleClickComposeToggle}>
-        <CreateIcon/>
-      </div>
 
       <Snackbar
         open={isSnackBarShowed}

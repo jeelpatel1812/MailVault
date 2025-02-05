@@ -61,6 +61,7 @@ export const MailComposer = (props) => {
       open={props.isOpen || true}
       onClose={handleToClose}
       hideBackdrop
+      className='compose-mail-container'
       slotProps={{
         paper: {
           sx: {
@@ -78,9 +79,6 @@ export const MailComposer = (props) => {
         },
       }}
     >
-
-<form method="post" enctype="multipart/form-data">
-</form>
     
       <DialogTitle sx={{ paddingBottom: 2, fontSize: "1rem", fontWeight: 600 }}>
         New Mail

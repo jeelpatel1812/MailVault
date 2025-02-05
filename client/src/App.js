@@ -5,8 +5,9 @@ import Signup from './components/Signup/signup';
 import Header from './components/Header/header';
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { NotFoundPage } from './components/NotFoundPage/notFoundPage';
-import { MailList } from './components/MailList/mailInbox';
 import { MailComposer } from './components/MailComposer/mailComposer';
+import { MailContainer } from './components/MailContainer/mailContainer';
+import MailDetail from './components/MailDetail/mailDetail';
 
 // const Mailbox = () => {
 //   const { category } = 'inbox'
@@ -22,7 +23,8 @@ function App() {
           <Route path="/user/login" element={<Login />} />
           <Route path="/user/signup" element={<Signup />} />
           <Route path="/user/profile" element={<UserProfile />} />
-          <Route path="/mail/inbox" element={<MailList/>} />
+          <Route path="/mail/inbox" element={<MailContainer/>} />
+          <Route path="/mail/inbox/:id" element={<MailDetail/>} />
           <Route path="/mail/compose" element={<MailComposer/>} />
           <Route path="*" element={<NotFoundPage />} />
       </Routes>

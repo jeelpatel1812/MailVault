@@ -45,3 +45,9 @@
 .send-schedule-button:hover {
     background-color: #1b61d1;
 }
+
+.compose-mail-container{
+    left: calc(100% - 664px) !important;
+    top: calc(100% - 464px) !important;
+    background-color: #FFFFFF;
+}
